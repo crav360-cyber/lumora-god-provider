@@ -1,0 +1,12 @@
+{
+  "name": "Unified God Provider",
+  "description": "Smart Anime & Movie Provider with Puppeteer extraction and real quality parsing.",
+  "entry": "index.js",
+  "healthPath": "/health",
+  "hosts": [
+    "graphql.anilist.co",
+    "aniwatch-api-tau.vercel.app",
+    "vidsrc.to",
+    "vidsrc.xyz"
+  ]
+}
