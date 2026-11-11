@@ -1,12 +1,19 @@
 {
   "name": "Unified God Provider",
-  "description": "Smart Anime & Movie Provider with Puppeteer extraction and real quality parsing.",
+  "description": "Reliable Embeds for Movies + Anime API.",
   "entry": "index.js",
   "healthPath": "/health",
   "hosts": [
-    "graphql.anilist.co",
-    "aniwatch-api-tau.vercel.app",
     "vidsrc.to",
-    "vidsrc.xyz"
+    "vidsrc.xyz",
+    "vidsrc.me",
+    "2embed.cc",
+    "www.2embed.cc",
+    "autoembed.co",
+    "multiembed.mov",
+    "embed.su",
+    "moviesapi.club",
+    "vidlink.pro",
+    "embed.smashystream.com"
   ]
 }
