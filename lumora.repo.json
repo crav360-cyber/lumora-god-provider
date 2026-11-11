@@ -1,19 +1,8 @@
 {
-  "name": "Unified God Provider",
-  "description": "Reliable Embeds for Movies + Anime API.",
-  "entry": "index.js",
-  "healthPath": "/health",
-  "hosts": [
-    "vidsrc.to",
-    "vidsrc.xyz",
-    "vidsrc.me",
-    "2embed.cc",
-    "www.2embed.cc",
-    "autoembed.co",
-    "multiembed.mov",
-    "embed.su",
-    "moviesapi.club",
-    "vidlink.pro",
-    "embed.smashystream.com"
-  ]
+  "name": "lumora-god-provider",
+  "version": "4.0.0",
+  "main": "index.js",
+  "dependencies": {
+    "@consumet/extensions": "^1.5.8"
+  }
 }
