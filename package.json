@@ -1,12 +1,8 @@
 {
   "name": "lumora-god-provider",
-  "version": "2.5.0",
+  "version": "3.0.0",
   "main": "index.js",
   "dependencies": {
-    "puppeteer-core": "^22.0.0",
-    "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2",
-    "@sparticuz/chromium": "^123.0.0",
     "@consumet/extensions": "^1.5.8"
   }
 }
