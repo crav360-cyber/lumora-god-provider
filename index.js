@@ -2,67 +2,78 @@
 const http = require('node:http');
 const { URL } = require('node:url');
 
-// Puppeteer & Serverless Chromium setup
+// Puppeteer & Serverless Chromium
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const chromium = require('@sparticuz/chromium');
 
-// Apply stealth plugin to bypass Cloudflare/VidSrc blocks
+// Consumet Library (Local Scraping)
+const { ANIME } = require('@consumet/extensions');
+
 puppeteer.use(StealthPlugin());
 
 const PORT = Number(process.env.PORT) || 3100;
 const HOST = process.env.HOST || '127.0.0.1';
 
-// ─── 1. SMART ANIME SCRAPER (Uses API for Sub/Dub & Qualities) ───
+// ─── 1. LOCAL SMART ANIME SCRAPER (No external API needed) ───
 async function fetchAnime(title, episode) {
   try {
-    const query = `query ($search: String) { Media (search: $search, type: ANIME) { id } }`;
-    const res = await fetch('https://graphql.anilist.co', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, variables: { search: title } })
-    });
-    const json = await res.json();
-    const anilistId = json.data?.Media?.id;
-    if (!anilistId) return null;
+    // Initialize the Zoro (HiAnime) scraper directly in your app
+    const zoro = new ANIME.Zoro();
+    
+    // Search for the anime
+    const searchResults = await zoro.search(title);
+    if (!searchResults || !searchResults.results || searchResults.results.length === 0) {
+      console.log(`Anime not found via Consumet: ${title}`);
+      return null;
+    }
 
-    const infoRes = await fetch(`https://aniwatch-api-tau.vercel.app/anime/zoro/info?id=${anilistId}`);
-    const info = await infoRes.json();
+    // Get the info for the first result
+    const animeId = searchResults.results[0].id;
+    const info = await zoro.fetchAnimeInfo(animeId);
+    
     if (!info || !info.episodes) return null;
 
+    // Find the requested episode
     const targetEp = info.episodes.find(e => e.number === parseInt(episode));
-    if (!targetEp) return null;
+    if (!targetEp) {
+      console.log(`Episode ${episode} not found for ${title}`);
+      return null;
+    }
 
     const sources = [];
-    
-    // Fetch Sub
-    try {
-      const subRes = await fetch(`https://aniwatch-api-tau.vercel.app/anime/zoro/watch?episodeId=${targetEp.id}&dub=false`);
-      const subData = await subRes.json();
-      if (subData.sources) {
-        subData.sources.forEach(s => {
-          sources.push({
-            label: `Zoro (SUB) - ${s.quality || 'Auto'}`,
-            type: 'hls', url: s.url, quality: s.quality || '1080p',
-            audio: 'sub', lang: 'ja', downloadable: true
-          });
-        });
-      }
-    } catch (e) { /* Ignore sub fetch errors */ }
 
-    // Fetch Dub
+    // Fetch SUB streams
     try {
-      const dubRes = await fetch(`https://aniwatch-api-tau.vercel.app/anime/zoro/watch?episodeId=${targetEp.id}&dub=true`);
-      const dubData = await dubRes.json();
-      if (dubData.sources && dubData.sources.length > 0) {
-        dubData.sources.forEach(s => {
-          sources.push({
-            label: `Zoro (DUB) - ${s.quality || 'Auto'}`,
-            type: 'hls', url: s.url, quality: s.quality || '1080p',
-            audio: 'dub', lang: 'en', downloadable: true
-          });
+      const subData = await zoro.fetchEpisodeSources(targetEp.id, undefined, 'sub');
+      if (subData && subData.sources) {
+        subData.sources.forEach(s => {
+          if (s.url.includes('.m3u8')) {
+            sources.push({
+              label: `Zoro (SUB) - ${s.quality || 'Auto'}`,
+              type: 'hls', url: s.url, quality: s.quality || '1080p',
+              audio: 'sub', lang: 'ja', downloadable: true
+            });
+          }
         });
       }
-    } catch (e) { /* Ignore dub fetch errors */ }
+    } catch (e) { console.log('Sub fetch failed'); }
+
+    // Fetch DUB streams
+    try {
+      const dubData = await zoro.fetchEpisodeSources(targetEp.id, undefined, 'dub');
+      if (dubData && dubData.sources) {
+        dubData.sources.forEach(s => {
+          if (s.url.includes('.m3u8')) {
+            sources.push({
+              label: `Zoro (DUB) - ${s.quality || 'Auto'}`,
+              type: 'hls', url: s.url, quality: s.quality || '1080p',
+              audio: 'dub', lang: 'en', downloadable: true
+            });
+          }
+        });
+      }
+    } catch (e) { console.log('Dub fetch failed'); }
 
     return sources.length > 0 ? sources : null;
   } catch (e) {
@@ -71,11 +82,10 @@ async function fetchAnime(title, episode) {
   }
 }
 
-// ─── 2. SMART MOVIE SCRAPER (Puppeteer + M3U8 Quality Parsing) ───
+// ─── 2. SMART MOVIE SCRAPER (Puppeteer) ───
 async function fetchMovie(type, tmdbId, season, episode) {
   let browser;
   try {
-    // Launch serverless chromium
     browser = await puppeteer.launch({
       args: [...chromium.args, '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
       defaultViewport: chromium.defaultViewport,
@@ -84,8 +94,6 @@ async function fetchMovie(type, tmdbId, season, episode) {
     });
     
     const page = await browser.newPage();
-    
-    // Block images/CSS to save memory and speed up loading
     await page.setRequestInterception(true);
     page.on('request', (req) => {
       if (['image', 'stylesheet', 'font'].includes(req.resourceType())) req.abort();
@@ -98,7 +106,6 @@ async function fetchMovie(type, tmdbId, season, episode) {
 
     let masterM3u8 = null;
     
-    // Intercept the network to find the master M3U8 playlist
     page.on('response', (response) => {
       const url = response.url();
       if (url.includes('.m3u8') && !url.includes('ad') && !masterM3u8) {
@@ -108,7 +115,6 @@ async function fetchMovie(type, tmdbId, season, episode) {
 
     await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 15000 });
     
-    // Try clicking play if it doesn't auto-play
     try {
       await page.evaluate(() => {
         const btn = document.querySelector('.play-button, #play, video');
@@ -119,8 +125,6 @@ async function fetchMovie(type, tmdbId, season, episode) {
 
     if (!masterM3u8) return [];
 
-    // ─── SMART QUALITY PARSING ───
-    // Download the M3U8 file to see exactly what qualities are inside
     const m3u8Res = await fetch(masterM3u8);
     const m3u8Text = await m3u8Res.text();
     
@@ -129,7 +133,6 @@ async function fetchMovie(type, tmdbId, season, episode) {
     
     for (let i = 0; i < lines.length; i++) {
       if (lines[i].includes('#EXT-X-STREAM-INF')) {
-        // Extract resolution (e.g., 1920x1080)
         const resMatch = lines[i].match(/RESOLUTION=(\d+)x(\d+)/);
         let quality = 'Auto';
         if (resMatch) {
@@ -140,7 +143,6 @@ async function fetchMovie(type, tmdbId, season, episode) {
           else quality = `${height}p`;
         }
         
-        // The next line is the actual URL for this quality
         const streamUrl = lines[i + 1]?.trim();
         if (streamUrl && streamUrl.startsWith('http')) {
           sources.push({
@@ -156,7 +158,6 @@ async function fetchMovie(type, tmdbId, season, episode) {
       }
     }
 
-    // If no master playlist (it's already a direct stream), just return the link
     if (sources.length === 0 && masterM3u8) {
       sources.push({ 
         label: 'VidSrc (Direct)', type: 'hls', url: masterM3u8, 
@@ -177,13 +178,11 @@ async function fetchMovie(type, tmdbId, season, episode) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${HOST}`);
   
-  // Health check endpoint
   if (url.pathname === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ status: 'ok' }));
   }
 
-  // Lumora resolve endpoint
   if (url.pathname === '/lumora/v1/resolve') {
     const type = url.searchParams.get('type');
     const tmdbId = url.searchParams.get('tmdb');
@@ -199,27 +198,25 @@ const server = http.createServer(async (req, res) => {
     try {
       let sources = [];
       
-      // Smart Routing: If it's a TV show, check if it's an Anime first.
+      // If it's a TV show, try Anime first
       if (type === 'tv' && title) {
-        console.log(`Checking Anime sources for: ${title}`);
+        console.log(`[Router] Checking Anime sources locally for: ${title}`);
         const animeSources = await fetchAnime(title, episode);
-        
         if (animeSources && animeSources.length > 0) {
-          console.log(`Found Anime! Returning ${animeSources.length} streams.`);
           sources = animeSources;
         }
       }
       
       // If no anime sources found, fallback to Puppeteer Movie/TV scraper
       if (sources.length === 0) {
-        console.log(`Scraping Movie/TV sources via Puppeteer for TMDB: ${tmdbId}`);
+        console.log(`[Router] Scraping Movie/TV sources via Puppeteer for TMDB: ${tmdbId}`);
         sources = await fetchMovie(type, tmdbId, season, episode);
       }
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ sources }));
     } catch (err) {
-      console.error('Router Error:', err.message);
+      console.error('[Router] Error:', err.message);
       res.writeHead(500);
       return res.end(JSON.stringify({ error: err.message }));
     }
