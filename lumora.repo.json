@@ -1,8 +1,13 @@
 {
-  "name": "lumora-god-provider",
-  "version": "4.0.0",
-  "main": "index.js",
-  "dependencies": {
-    "@consumet/extensions": "^1.5.8"
-  }
+  "name": "Unified God Provider",
+  "description": "Native HLS Scraping for Movies and Anime with Embed fallbacks.",
+  "entry": "index.js",
+  "healthPath": "/health",
+  "hosts": [
+    "vidsrc.to",
+    "2embed.cc",
+    "flixhq.to",
+    "zoro.to",
+    "hianime.to"
+  ]
 }
